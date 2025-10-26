@@ -30,7 +30,7 @@ jobs:
           SDK_URL="https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
           wget -q $SDK_URL
           tar -I zstd -xf $(basename $SDK_URL)
-          SDK_DIR=$(tar -tf $(basename $SDK_URL) | head -1 | cut -f1 -d"/")
+          SDK_DIR=$(tar -tf $(basename $SDK_URL) | awk -F/ 'NR==1 {print $1; exit}')
 
           echo "解压得到目录: $SDK_DIR"
           mv "$SDK_DIR" openwrt-sdk
@@ -38,7 +38,13 @@ jobs:
       - name: 🔗 Link package into SDK
         run: |
           mkdir -p openwrt-sdk/package/custom
-          cp -r . openwrt-sdk/package/custom/${PKG_NAME}
+          rsync -a ./ openwrt-sdk/package/custom/${PKG_NAME}/ \
+            --exclude 'openwrt-sdk' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'LICENSE' \
+            --exclude 'README.md' \
+            --exclude 'SECURITY.md'
 
       - name: 🔍 Run prepare to calculate hash
         run: |
