@@ -34,6 +34,38 @@ jobs:
       - name: 🧾 Checkout repo
         uses: actions/checkout@v5
 
+      - name: 🔎 Decide whether build is needed (fingerprint compare)
+        id: need
+        run: |
+          # Extract FP from triggering commit message (workflow_run payload)
+          COMMIT_MSG="${{ github.event.workflow_run.head_commit.message }}"
+          echo "Trigger commit message: $COMMIT_MSG"
+          FP=$(echo "$COMMIT_MSG" | sed -n 's/.*FP=\([0-9a-f]\{64\}\).*/\1/p')
+          if [ -z "$FP" ]; then
+            echo "No FP found in commit message; default to build."
+            echo "need=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ -f .last-fingerprint ]; then
+            LAST=$(cat .last-fingerprint)
+          else
+            LAST=""
+          fi
+          echo "Current FP: $FP"
+          echo "Last FP: $LAST"
+          if [ "$FP" = "$LAST" ]; then
+            echo "Fingerprint unchanged; skip build."
+            echo "need=false" >> $GITHUB_OUTPUT
+          else
+            echo "Fingerprint changed; proceed to build."
+            echo "need=true" >> $GITHUB_OUTPUT
+
+      - name: ⛔ Exit early if no build needed
+        if: steps.need.outputs.need == 'false'
+        run: |
+          echo "No build needed. Exiting."
+          exit 0
+
       - name: 📛 Extract PKG_NAME from Makefile
         run: |
           PKG_NAME=$(grep -E '^PKG_NAME[:?]?=' Makefile | head -n1 | sed -E 's/PKG_NAME[:?]?= *//')
