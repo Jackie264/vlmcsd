@@ -68,6 +68,7 @@ jobs:
           make defconfig
           rm -f dl/${PKG_NAME}-*.tar.*   # 强制删除旧源码包
           rm -rf build_dir/*/${PKG_NAME}*
+          make package/custom/${PKG_NAME}/download V=s
           (make package/custom/${PKG_NAME}/check V=s || true) | tee ../check.log
           touch ../check.log
 
