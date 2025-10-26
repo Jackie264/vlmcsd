@@ -2,7 +2,9 @@ name: Calculate PKG_MIRROR_HASH
 
 on:
   workflow_dispatch:
-
+  push:
+    paths:
+      - 'Makefile'
 jobs:
   calculate:
     runs-on: ubuntu-latest
@@ -66,7 +68,7 @@ jobs:
         run: |
           cd openwrt-sdk
           make defconfig
-          rm -f dl/${PKG_NAME}-*.tar.*   # 强制删除旧源码包
+          rm -f dl/${PKG_NAME}-*.tar.*
           rm -rf build_dir/*/${PKG_NAME}*
           make package/custom/${PKG_NAME}/download V=s
           (make package/custom/${PKG_NAME}/check V=s || true) | tee ../check.log
