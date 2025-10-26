@@ -6,6 +6,8 @@ on:
         description: 'Target OpenWrt version. if empty the simple mode will be used.'
         required: false
         type: string
+  push:
+    branches: main
 
 jobs:
   check:
