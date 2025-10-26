@@ -25,13 +25,16 @@ jobs:
           PKG_NAME=$(grep -E '^PKG_NAME[:?]?=' Makefile | head -n1 | sed -E 's/PKG_NAME[:?]?= *//')
           echo "PKG_NAME=$PKG_NAME" >> "$GITHUB_ENV"
 
-      - name: 🧰 Download OpenWrt SDK
+      - name: 📦 Download OpenWrt SDK
         run: |
-          TARGET_VERSION="${{ inputs.target_version }}"
-          [ -z "$TARGET_VERSION" ] && TARGET_VERSION="openwrt-24.10"
-          echo "Using OpenWrt version: $TARGET_VERSION"
-          wget https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
-          tar -xf openwrt-sdk-*.tar.xz
+          VERSION="${{ inputs.target_version }}"
+          [ -z "$VERSION" ] && VERSION="24.10.0"
+          BASE_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/x86/64"
+          wget -q ${BASE_URL}/sha256sums
+          SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}')
+          echo "Downloading SDK: $SDK_FILE"
+          wget ${BASE_URL}/${SDK_FILE}
+          tar -xf ${SDK_FILE}
           mv openwrt-sdk-* openwrt-sdk
 
       - name: 🔗 Link package into SDK
