@@ -2,11 +2,6 @@ name: Calculate PKG_MIRROR_HASH
 
 on:
   workflow_dispatch:
-    inputs:
-      target_version:
-        description: 'Target OpenWrt version (e.g. openwrt-24.10)'
-        required: false
-        type: string
 
 jobs:
   calculate:
@@ -25,16 +20,65 @@ jobs:
           PKG_NAME=$(grep -E '^PKG_NAME[:?]?=' Makefile | head -n1 | sed -E 's/PKG_NAME[:?]?= *//')
           echo "PKG_NAME=$PKG_NAME" >> "$GITHUB_ENV"
 
-      - name: 📦 Download OpenWrt SDK
+      - name: 📥 Download sha256sums
         run: |
-          SDK_URL="https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-          wget -q $SDK_URL
-          tar -I zstd -xf $(basename $SDK_URL)
-          SDK_DIR=$(tar -tf $(basename $SDK_URL) | awk -F/ 'NR==1 {print $1; exit}')
+          BASE_URL="https://downloads.openwrt.org/releases/24.10.4/targets/x86/64"
+          wget -q ${BASE_URL}/sha256sums
+          echo "BASE_URL=$BASE_URL" >> "$GITHUB_ENV"
 
-          echo "解压得到目录: $SDK_DIR"
+      - name: ♻️ Cache OpenWrt SDK
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: openwrt-sdk
+          key: sdk-${{ runner.os }}-${{ hashFiles('sha256sums') }}
+
+      - name: 📦 Download & Extract OpenWrt SDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}')
+          SDK_HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
+          echo "Downloading SDK: $SDK_FILE"
+          wget -q ${BASE_URL}/${SDK_FILE}
+          echo "${SDK_HASH}  ${SDK_FILE}" | sha256sum -c -
+          tar -I zstd -xf ${SDK_FILE}
+          SDK_DIR=$(tar -tf ${SDK_FILE} | awk -F/ 'NR==1 {print $1; exit}')
           mv "$SDK_DIR" openwrt-sdk
 
+      - name: 🔗 Link package into SDK
+        run: |
+          mkdir -p openwrt-sdk/package/custom/${PKG_NAME}
+          rsync -a ./ openwrt-sdk/package/custom/${PKG_NAME}/ \
+            --exclude 'openwrt-sdk' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'LICENSE' \
+            --exclude 'README.md' \
+            --exclude 'SECURITY.md'
+
+      - name: 🔍 Run prepare to calculate hash
+        run: |
+          cd openwrt-sdk
+          make defconfig
+          make package/custom/${PKG_NAME}/prepare V=s || true | tee ../prepare.log
+
+      - name: 📝 Update PKG_MIRROR_HASH if needed
+        run: |
+          HASH=$(grep -A1 "Hash check failed" prepare.log | grep "Got:" | awk '{print $2}')
+          if [ -n "$HASH" ]; then
+            echo "✅ Calculated PKG_MIRROR_HASH: $HASH"
+            if grep -q "^PKG_MIRROR_HASH" Makefile; then
+              sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$HASH|" Makefile
+            else
+              echo "PKG_MIRROR_HASH:=$HASH" >> Makefile
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -am "Update PKG_MIRROR_HASH"
+            git push
+          else
+            echo "ℹ️ No PKG_MIRROR_HASH changes."
+          fi
       - name: 🔗 Link package into SDK
         run: |
           mkdir -p openwrt-sdk/package/custom
