@@ -27,14 +27,8 @@ jobs:
 
       - name: 📦 Download OpenWrt SDK
         run: |
-          VERSION="${{ inputs.target_version }}"
-          [ -z "$VERSION" ] && VERSION="24.10.0"
-          BASE_URL="https://downloads.openwrt.org/releases/${VERSION}/targets/x86/64"
-          wget -q ${BASE_URL}/sha256sums
-          SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}')
-          echo "Downloading SDK: $SDK_FILE"
-          wget ${BASE_URL}/${SDK_FILE}
-          tar -xf ${SDK_FILE}
+          wget https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+          tar -I zstd -xf openwrt-sdk-*.tar.zst
           mv openwrt-sdk-* openwrt-sdk
 
       - name: 🔗 Link package into SDK
