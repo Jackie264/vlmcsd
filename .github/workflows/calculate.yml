@@ -74,21 +74,37 @@ jobs:
           (make package/custom/${PKG_NAME}/check V=s || true) | tee ../check.log
           touch ../check.log
 
+      - name: 🧮 Compute build fingerprint (ignore PKG_MIRROR_HASH)
+        id: fp
+        run: |
+          # Makefile without PKG_MIRROR_HASH line
+          grep -v '^PKG_MIRROR_HASH' Makefile > .Makefile.nohash
+          # Hash of Makefile (no hash line) + patches directory (if exists)
+          if [ -d patches ]; then
+            find patches -type f -print0 | sort -z | xargs -0 sha256sum > .patches.sha
+          else
+            : > .patches.sha
+          fi
+          cat .Makefile.nohash .patches.sha | sha256sum | awk '{print $1}' > .fingerprint
+          FP=$(cat .fingerprint)
+          echo "fingerprint=$FP" >> $GITHUB_OUTPUT
+          echo "Computed fingerprint: $FP"
+
       - name: 📝 Update PKG_MIRROR_HASH if needed
         run: |
-          HASH=$(grep "PKG_MIRROR_HASH uses deprecated hash" check.log | awk '{print $NF}' | tail -n1)
-          if [ -n "$HASH" ]; then
-            echo "✅ Calculated PKG_MIRROR_HASH: $HASH"
-            if grep -q "^PKG_MIRROR_HASH" Makefile; then
-              sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$HASH|" Makefile
-            else
-              echo "PKG_MIRROR_HASH:=$HASH" >> Makefile
-            fi
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git commit -am "Update PKG_MIRROR_HASH"
-            git push
-          else
+          NEW_HASH=$(grep -Eo '[0-9a-f]{64}' check.log | tail -n1)
+          OLD_HASH=$(grep '^PKG_MIRROR_HASH' Makefile | awk -F= '{print $2}')
+          if [ -z "$NEW_HASH" ]; then
             echo "❌ Failed to extract PKG_MIRROR_HASH from check.log"
+            echo "---- check.log ----"; cat check.log; echo "-------------------"
             exit 1
           fi
+          if [ "$NEW_HASH" = "$OLD_HASH" ]; then
+            echo "ℹ️ Hash unchanged ($NEW_HASH), no commit."
+            exit 0
+          fi
+          sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$NEW_HASH|" Makefile
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update PKG_MIRROR_HASH FP=${{ steps.fp.outputs.fingerprint }}"
+          git push
