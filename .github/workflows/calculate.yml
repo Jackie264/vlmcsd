@@ -36,7 +36,7 @@ jobs:
       - name: 📦 Download & Extract OpenWrt SDK
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}')
+          SDK_FILE=$(grep "openwrt-sdk" sha256sums | sed 's/^[0-9a-f]\+ \+//')
           SDK_HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
           echo "Downloading SDK: $SDK_FILE"
           wget -q ${BASE_URL}/${SDK_FILE}
