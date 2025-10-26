@@ -26,17 +26,23 @@ jobs:
           wget -q ${BASE_URL}/sha256sums
           echo "BASE_URL=$BASE_URL" >> "$GITHUB_ENV"
 
+      - name: 🔑 Extract SDK hash
+        id: sdk-hash
+        run: |
+          HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+
       - name: ♻️ Cache OpenWrt SDK
         id: cache
         uses: actions/cache@v4
         with:
           path: openwrt-sdk
-          key: sdk-${{ runner.os }}-${{ hashFiles('sha256sums') }}
+          key: sdk-${{ runner.os }}-${{ steps.sdk-hash.outputs.hash }}
 
       - name: 📦 Download & Extract OpenWrt SDK
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          SDK_FILE=$(grep "openwrt-sdk" sha256sums | sed 's/^[0-9a-f]\+ \+//')
+          SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}' | sed 's/^\*//')
           SDK_HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
           echo "Downloading SDK: $SDK_FILE"
           wget -q ${BASE_URL}/${SDK_FILE}
