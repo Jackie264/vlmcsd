@@ -62,20 +62,18 @@ jobs:
             --exclude 'README.md' \
             --exclude 'SECURITY.md'
 
-      - name: 🔍 Run prepare to calculate hash
+      - name: 🔍 Run check to calculate hash
         run: |
           cd openwrt-sdk
           make defconfig
-          # 强制清理，确保 prepare 会重新触发 hash 校验
-          rm -f dl/*${PKG_NAME}*
+          rm -f dl/${PKG_NAME}-*.tar.*   # 强制删除旧源码包
           rm -rf build_dir/*/${PKG_NAME}*
-          # 捕获日志
-          (make package/custom/${PKG_NAME}/prepare V=s || true) | tee ../prepare.log
-          touch ../prepare.log
+          (make package/custom/${PKG_NAME}/check V=s || true) | tee ../check.log
+          touch ../check.log
 
       - name: 📝 Update PKG_MIRROR_HASH if needed
         run: |
-          HASH=$(grep -A1 "Hash check failed" prepare.log | grep "Got:" | awk '{print $2}')
+          HASH=$(grep "PKG_MIRROR_HASH uses deprecated hash" check.log | awk '{print $NF}' | tail -n1)
           if [ -n "$HASH" ]; then
             echo "✅ Calculated PKG_MIRROR_HASH: $HASH"
             if grep -q "^PKG_MIRROR_HASH" Makefile; then
@@ -88,5 +86,6 @@ jobs:
             git commit -am "Update PKG_MIRROR_HASH"
             git push
           else
-            echo "ℹ️ No PKG_MIRROR_HASH changes."
+            echo "❌ Failed to extract PKG_MIRROR_HASH from check.log"
+            exit 1
           fi
