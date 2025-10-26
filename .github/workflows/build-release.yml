@@ -3,13 +3,11 @@ permissions:
 name: Build OpenWrt Package
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'Makefile'
-      - '!**/.github/**'
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Calculating PKG_MIRROR_HASH"]
+    types:
+      - completed
 
 jobs:
   build:
