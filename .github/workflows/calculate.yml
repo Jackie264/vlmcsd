@@ -60,41 +60,12 @@ jobs:
         run: |
           cd openwrt-sdk
           make defconfig
-          make package/custom/${PKG_NAME}/prepare V=s || true | tee ../prepare.log
-
-      - name: 📝 Update PKG_MIRROR_HASH if needed
-        run: |
-          HASH=$(grep -A1 "Hash check failed" prepare.log | grep "Got:" | awk '{print $2}')
-          if [ -n "$HASH" ]; then
-            echo "✅ Calculated PKG_MIRROR_HASH: $HASH"
-            if grep -q "^PKG_MIRROR_HASH" Makefile; then
-              sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$HASH|" Makefile
-            else
-              echo "PKG_MIRROR_HASH:=$HASH" >> Makefile
-            fi
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git commit -am "Update PKG_MIRROR_HASH"
-            git push
-          else
-            echo "ℹ️ No PKG_MIRROR_HASH changes."
-          fi
-      - name: 🔗 Link package into SDK
-        run: |
-          mkdir -p openwrt-sdk/package/custom
-          rsync -a ./ openwrt-sdk/package/custom/${PKG_NAME}/ \
-            --exclude 'openwrt-sdk' \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'LICENSE' \
-            --exclude 'README.md' \
-            --exclude 'SECURITY.md'
-
-      - name: 🔍 Run prepare to calculate hash
-        run: |
-          cd openwrt-sdk
-          make defconfig
-          make package/custom/${PKG_NAME}/prepare V=s || true | tee ../prepare.log
+          # 强制清理，确保 prepare 会重新触发 hash 校验
+          rm -f dl/*${PKG_NAME}*
+          rm -rf build_dir/*/${PKG_NAME}*
+          # 捕获日志
+          (make package/custom/${PKG_NAME}/prepare V=s || true) | tee ../prepare.log
+          touch ../prepare.log
 
       - name: 📝 Update PKG_MIRROR_HASH if needed
         run: |
