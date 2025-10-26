@@ -36,9 +36,9 @@ jobs:
 
       - name: 🔎 Decide whether build is needed (fingerprint compare)
         id: need
+        env:
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
         run: |
-          # Extract FP from triggering commit message (workflow_run payload)
-          COMMIT_MSG="${{ github.event.workflow_run.head_commit.message }}"
           echo "Trigger commit message: $COMMIT_MSG"
           FP=$(echo "$COMMIT_MSG" | sed -n 's/.*FP=\([0-9a-f]\{64\}\).*/\1/p')
           if [ -z "$FP" ]; then
