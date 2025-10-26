@@ -23,8 +23,22 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - uses: muink/openwrt-package-mirror-hash-calculator@main
+      - name: Run hash calculator
+        id: calc
+        uses: muink/openwrt-package-mirror-hash-calculator@main
         env:
           COMMIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MAKEFILE: Makefile
           TARGET_VERSION: ${{ inputs.target_version }}
+
+      - name: Check if Makefile changed
+        run: |
+          if git diff --quiet; then
+            echo "ℹ️ No PKG_MIRROR_HASH changes, skipping commit."
+          else
+            echo "✅ PKG_MIRROR_HASH updated, committing changes..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -am "Update PKG_MIRROR_HASH"
+            git push
+          fi
