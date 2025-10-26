@@ -1,44 +1,66 @@
-name: Calculating PKG_MIRROR_HASH
+name: Calculate PKG_MIRROR_HASH
+
 on:
   workflow_dispatch:
     inputs:
       target_version:
-        description: 'Target OpenWrt version. if empty the simple mode will be used.'
+        description: 'Target OpenWrt version (e.g. openwrt-24.10)'
         required: false
         type: string
-  push:
-    branches:
-      - main
 
 jobs:
-  check:
-    name: Calculating PKG_MIRROR_HASH of XX
+  calculate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # To push a branch
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: 🧾 Checkout repo
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Run hash calculator
-        id: calc
-        uses: muink/openwrt-package-mirror-hash-calculator@main
-        env:
-          COMMIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MAKEFILE: Makefile
-          TARGET_VERSION: ${{ inputs.target_version }}
-
-      - name: Check if Makefile changed
+      - name: 📛 Extract PKG_NAME
         run: |
-          if git diff --quiet; then
-            echo "ℹ️ No PKG_MIRROR_HASH changes, skipping commit."
-          else
-            echo "✅ PKG_MIRROR_HASH updated, committing changes..."
+          PKG_NAME=$(grep -E '^PKG_NAME[:?]?=' Makefile | head -n1 | sed -E 's/PKG_NAME[:?]?= *//')
+          echo "PKG_NAME=$PKG_NAME" >> "$GITHUB_ENV"
+
+      - name: 🧰 Download OpenWrt SDK
+        run: |
+          TARGET_VERSION="${{ inputs.target_version }}"
+          [ -z "$TARGET_VERSION" ] && TARGET_VERSION="openwrt-24.10"
+          echo "Using OpenWrt version: $TARGET_VERSION"
+          wget https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-12.3.0_musl.Linux-x86_64.tar.xz
+          tar -xf openwrt-sdk-*.tar.xz
+          mv openwrt-sdk-* openwrt-sdk
+
+      - name: 🔗 Link package into SDK
+        run: |
+          mkdir -p openwrt-sdk/package/custom
+          cp -r . openwrt-sdk/package/custom/${PKG_NAME}
+
+      - name: 🔍 Run prepare to calculate hash
+        run: |
+          cd openwrt-sdk
+          make defconfig
+          make package/custom/${PKG_NAME}/prepare V=s || true
+
+      - name: 📝 Update PKG_MIRROR_HASH if needed
+        run: |
+          cd openwrt-sdk
+          HASH=$(grep -A2 "Please update PKG_MIRROR_HASH" build_dir/*/${PKG_NAME}/.prepared* 2>/dev/null | tail -n1 | tr -d '[:space:]')
+          cd ..
+          if [ -n "$HASH" ]; then
+            echo "✅ Calculated PKG_MIRROR_HASH: $HASH"
+            if grep -q "^PKG_MIRROR_HASH" Makefile; then
+              sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$HASH|" Makefile
+            else
+              echo "PKG_MIRROR_HASH:=$HASH" >> Makefile
+            fi
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git commit -am "Update PKG_MIRROR_HASH"
             git push
+          else
+            echo "ℹ️ No PKG_MIRROR_HASH changes."
           fi
