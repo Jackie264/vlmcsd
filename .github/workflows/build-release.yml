@@ -65,10 +65,6 @@ jobs:
           FEED_DIR: ${{ github.workspace }}/feed
           NO_SHFMT_CHECK: 1
           NO_REFRESH_CHECK: 1
-        with:
-          args: |
-            package/${PKG_NAME}/prepare V=s || true
-            package/${PKG_NAME}/(clean, compile) V=s
           
       - name: 🔍 Debug build output
         run: |
