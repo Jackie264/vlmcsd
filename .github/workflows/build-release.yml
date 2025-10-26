@@ -66,28 +66,9 @@ jobs:
           NO_SHFMT_CHECK: 1
           NO_REFRESH_CHECK: 1
         with:
-          run: |
-            # 先跑 prepare，检查 hash
-            make package/${PKG_NAME}/prepare V=s || true
-
-            HASH=$(grep -A2 "Please update PKG_MIRROR_HASH" build_dir/*/${PKG_NAME}/.prepared* 2>/dev/null | tail -n1 | tr -d '[:space:]')
-            if [ -n "$HASH" ]; then
-              echo "✅ Calculated PKG_MIRROR_HASH: $HASH"
-              if grep -q "^PKG_MIRROR_HASH" feed/jackie264/${PKG_NAME}/Makefile; then
-                sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$HASH|" feed/jackie264/${PKG_NAME}/Makefile
-              else
-                echo "PKG_MIRROR_HASH:=$HASH" >> feed/jackie264/${PKG_NAME}/Makefile
-              fi
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git commit -am "Update PKG_MIRROR_HASH"
-              git push
-              echo "ℹ️ Hash updated, stopping this run. Next build will be triggered by push."
-              exit 0
-            fi
-
-            # 如果 hash 没变，继续正常编译
-            make package/${PKG_NAME}/(clean, compile) V=s
+          args: |
+            package/${PKG_NAME}/prepare V=s || true
+            package/${PKG_NAME}/(clean, compile) V=s
           
       - name: 🔍 Debug build output
         run: |
