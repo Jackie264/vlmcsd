@@ -50,13 +50,11 @@ jobs:
         run: |
           cd openwrt-sdk
           make defconfig
-          make package/custom/${PKG_NAME}/prepare V=s || true
+          make package/custom/${PKG_NAME}/prepare V=s || true | tee ../prepare.log
 
       - name: 📝 Update PKG_MIRROR_HASH if needed
         run: |
-          cd openwrt-sdk
-          HASH=$(grep -A2 "Please update PKG_MIRROR_HASH" build_dir/*/${PKG_NAME}/.prepared* 2>/dev/null | tail -n1 | tr -d '[:space:]')
-          cd ..
+          HASH=$(grep -A1 "Hash check failed" prepare.log | grep "Got:" | awk '{print $2}')
           if [ -n "$HASH" ]; then
             echo "✅ Calculated PKG_MIRROR_HASH: $HASH"
             if grep -q "^PKG_MIRROR_HASH" Makefile; then
