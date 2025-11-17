@@ -78,9 +78,9 @@ jobs:
           printf 'include $(TOPDIR)/feed/jackie264/*/Makefile\n' > feed/jackie264/custom.mk
 
           rsync -av \
-            --exclude='.git' \
-            --exclude='feed' \
-            --exclude='.github' \
+            --exclude='.git/' \
+            --exclude='feed/' \
+            --exclude='.github/' \
             --exclude='LICENSE' \
             --exclude='README.md' \
             --exclude='SECURITY.md' \
