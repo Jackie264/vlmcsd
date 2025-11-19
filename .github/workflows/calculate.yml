@@ -71,8 +71,10 @@ jobs:
           make defconfig
           rm -f dl/${PKG_NAME}-*.tar.*
           rm -rf build_dir/*/${PKG_NAME}*
-          echo "⬇️ Downloading source..."
-          make package/custom/${PKG_NAME}/download V=s
+
+          echo "⬇️ Downloading source (Ignoring existing hash)..."
+          make package/custom/${PKG_NAME}/download PKG_MIRROR_HASH=skip V=s
+          
           DOWNLOADED_FILE=$(find dl -type f -name "${PKG_NAME}*" | head -n 1)
           if [ -z "$DOWNLOADED_FILE" ]; then
             echo "❌ Error: No file found in openwrt-sdk/dl/"
