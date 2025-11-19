@@ -13,7 +13,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
       (github.event.workflow_run.conclusion == 'success' && 
-       contains(github.event.workflow_run.head_commit.message, 'Auto-update vlmcsd'))
+       contains(github.event.workflow_run.head_commit.message, 'Check Upstream Update'))
        
     runs-on: ubuntu-latest
     permissions:
