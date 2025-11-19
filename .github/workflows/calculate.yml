@@ -64,47 +64,49 @@ jobs:
             --exclude 'README.md' \
             --exclude 'SECURITY.md'
 
-      - name: 🔍 Run check to calculate hash
+      - name: 🔍 Download and Calculate Hash manually
+        id: calc
         run: |
           cd openwrt-sdk
           make defconfig
           rm -f dl/${PKG_NAME}-*.tar.*
           rm -rf build_dir/*/${PKG_NAME}*
+          echo "⬇️ Downloading source..."
           make package/custom/${PKG_NAME}/download V=s
-          (make package/custom/${PKG_NAME}/check V=s || true) | tee ../check.log
-          touch ../check.log
-
-      - name: 🧮 Compute build fingerprint (ignore PKG_MIRROR_HASH)
-        id: fp
-        run: |
-          # Makefile without PKG_MIRROR_HASH line
-          grep -v '^PKG_MIRROR_HASH' Makefile > .Makefile.nohash
-          # Hash of Makefile (no hash line) + patches directory (if exists)
-          if [ -d patches ]; then
-            find patches -type f -print0 | sort -z | xargs -0 sha256sum > .patches.sha
-          else
-            : > .patches.sha
+          DOWNLOADED_FILE=$(find dl -type f -name "${PKG_NAME}*" | head -n 1)
+          if [ -z "$DOWNLOADED_FILE" ]; then
+            echo "❌ Error: No file found in openwrt-sdk/dl/"
+            echo "Listing dl directory:"
+            ls -R dl/
+            exit 1
           fi
-          cat .Makefile.nohash .patches.sha | sha256sum | awk '{print $1}' > .fingerprint
-          FP=$(cat .fingerprint)
-          echo "fingerprint=$FP" >> $GITHUB_OUTPUT
-          echo "Computed fingerprint: $FP"
+          echo "📦 Found file: $DOWNLOADED_FILE"
+          NEW_HASH=$(sha256sum "$DOWNLOADED_FILE" | awk '{print $1}')
+          echo "🧮 Calculated Hash: $NEW_HASH"
+          echo "NEW_HASH=$NEW_HASH" >> $GITHUB_OUTPUT
 
       - name: 📝 Update PKG_MIRROR_HASH if needed
         run: |
-          NEW_HASH=$(grep -Eo '[0-9a-f]{64}' check.log | tail -n1)
-          OLD_HASH=$(grep '^PKG_MIRROR_HASH' Makefile | awk -F= '{print $2}')
+          NEW_HASH="${{ steps.calc.outputs.NEW_HASH }}"
+          OLD_HASH=$(grep '^PKG_MIRROR_HASH' Makefile | awk -F= '{print $2}' | tr -d '[:space:]')
+          
+          echo "Old Hash: $OLD_HASH"
+          echo "New Hash: $NEW_HASH"
+          
           if [ -z "$NEW_HASH" ]; then
-            echo "❌ Failed to extract PKG_MIRROR_HASH from check.log"
-            echo "---- check.log ----"; cat check.log; echo "-------------------"
+            echo "❌ Failed to calculate new hash."
             exit 1
           fi
+          
           if [ "$NEW_HASH" = "$OLD_HASH" ]; then
-            echo "ℹ️ Hash unchanged ($NEW_HASH), no commit."
+            echo "ℹ️ Hash unchanged, no commit needed."
             exit 0
           fi
+          
           sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$NEW_HASH|" Makefile
+          
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "Update PKG_MIRROR_HASH FP=${{ steps.fp.outputs.fingerprint }}"
+          git add Makefile
+          git commit -m "Update PKG_MIRROR_HASH to $NEW_HASH"
           git push
