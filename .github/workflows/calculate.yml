@@ -46,12 +46,14 @@ jobs:
           HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
           echo "hash=$HASH" >> $GITHUB_OUTPUT
 
-      - name: ♻️ Cache OpenWrt SDK
+      - name: ♻️ Restore OpenWrt SDK cache (read-only)
         id: cache
         uses: actions/cache@v4
         with:
           path: openwrt-sdk
           key: sdk-${{ runner.os }}-${{ steps.sdk-hash.outputs.hash }}
+          restore-keys: sdk-${{ runner.os }}-
+          restore-only: true
 
       - name: 📦 Download & Extract OpenWrt SDK
         if: steps.cache.outputs.cache-hit != 'true'
@@ -60,6 +62,13 @@ jobs:
           SDK_HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
           echo "Downloading SDK: $SDK_FILE"
           wget -q ${BASE_URL}/${SDK_FILE}
+      - name: 💾 Save OpenWrt SDK cache (unprivileged branches only)
+        if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt-sdk
+          key: sdk-${{ runner.os }}-${{ steps.sdk-hash.outputs.hash }}
+
           echo "${SDK_HASH}  ${SDK_FILE}" | sha256sum -c -
           tar -I zstd -xf ${SDK_FILE}
           SDK_DIR=$(tar -tf ${SDK_FILE} | awk -F/ 'NR==1 {print $1; exit}')
