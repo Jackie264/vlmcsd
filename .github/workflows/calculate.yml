@@ -2,9 +2,6 @@ name: Calculate PKG_MIRROR_HASH
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'Makefile'
   workflow_run:
     workflows: ["Check Upstream Update"]
     types:
