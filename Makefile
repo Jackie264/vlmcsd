@@ -8,14 +8,14 @@ PKG_NAME:=vlmcsd
 PKG_RELEASE:=10
 
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_URL:=https://github.com/Wind4/vlmcsd.git
-PKG_SOURCE_DATE:=2020-03-30
-PKG_SOURCE_VERSION:=70e03572b254688b8c3557f898e7ebd765d29ae1
-PKG_MIRROR_HASH:=0d9fb74dae5121a0d657ff26be8ebaffbf2b772c8ee42fcee6cf8c56295ade7c
+PKG_SOURCE_URL:=https://github.com/tfslabs/vlmcsd.git
+PKG_SOURCE_DATE:=2025-09-18
+PKG_SOURCE_VERSION:=58ca902
+PKG_MIRROR_HASH:=b34f7735d7f73c76532816574ebc79c6b3b271dff59f5ea3b38c56b1c0bd4a4f
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
-PKG_MAINTAINER:=fuyumi <280604399@qq.com>
+PKG_MAINTAINER:=Jackie264 <OneNAS-space>
 
 PKG_BUILD_PARALLEL:=1
 
@@ -25,7 +25,7 @@ define Package/vlmcsd
   SECTION:=net
   CATEGORY:=Network
   TITLE:=A KMS Emulator in C
-  URL:=https://github.com/Wind4/vlmcsd
+  URL:=https://github.com/tfslabs/vlmcsd
   DEPENDS:=+libpthread
   USERID:=vlmcsd:vlmcsd
 endef
