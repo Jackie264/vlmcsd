@@ -9,9 +9,15 @@ on:
   push:
     branches:
       - main
+    paths:
+      - Makefile
 
 jobs:
   check:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, 'Auto-update-vlmcsd'))
+      
     name: Calculating PKG_MIRROR_HASH of vlmcsd
     runs-on: ubuntu-latest
     permissions:
