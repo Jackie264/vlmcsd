@@ -78,9 +78,9 @@ jobs:
         if: steps.check.outputs.updated == 'true'
         uses: Jackie264/actions-repo/package-mirror-hash-calculator@latest
         env:
-          COMMIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_TOKEN: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
           MAKEFILE: Makefile
-          TARGET_VERSION: ${{ github.event.inputs.target_version || '' }}
+          TARGET_VERSION: ${{ github.event.inputs.target_version != '' && github.event.inputs.target_version || '24.10.4' }}
 
       - name: Show calculated values
         if: steps.check.outputs.updated == 'true'
