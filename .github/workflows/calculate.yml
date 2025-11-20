@@ -1,127 +1,30 @@
-name: Calculate PKG_MIRROR_HASH
-
+name: Calculating PKG_MIRROR_HASH
 on:
   workflow_dispatch:
+    inputs:
+      target_version:
+        description: 'Target OpenWrt version. if empty the simple mode will be used.'
+        required: false
+        type: string
   push:
     branches:
-      - "main"
-    paths:
-      - "Makefile"
-      
+      - main
+
 jobs:
-  calculate:
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && contains(github.event.head_commit.message, 'Auto-update-vlmcsd'))
-       
+  check:
+    name: Calculating PKG_MIRROR_HASH of vlmcsd
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: 🧾 Checkout repo
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_branch }}
 
-      - name: 📛 Extract PKG_NAME
-        run: |
-          PKG_NAME=$(grep -E '^PKG_NAME[:?]?=' Makefile | head -n1 | sed -E 's/PKG_NAME[:?]?= *//')
-          echo "PKG_NAME=$PKG_NAME" >> "$GITHUB_ENV"
-
-      - name: 📥 Download sha256sums
-        run: |
-          BASE_URL="https://downloads.openwrt.org/releases/24.10.4/targets/x86/64"
-          wget -q ${BASE_URL}/sha256sums
-          echo "BASE_URL=$BASE_URL" >> "$GITHUB_ENV"
-
-      - name: 🔑 Extract SDK hash
-        id: sdk-hash
-        run: |
-          HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-
-      - name: ♻️ Cache OpenWrt SDK
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: openwrt-sdk
-          key: sdk-${{ runner.os }}-${{ steps.sdk-hash.outputs.hash }}-${{ hashFiles('Makefile') }}
-          restore-keys: sdk-${{ runner.os }}-${{ steps.sdk-hash.outputs.hash }}-
-
-      - name: 📦 Download & Extract OpenWrt SDK
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          if [ -d "openwrt-sdk" ]; then
-            echo "♻️ SDK restored from partial cache (restore-keys). Skipping download."
-            exit 0
-          fi
-          SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}' | sed 's/^\*//')
-          SDK_HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
-          echo "Downloading SDK: $SDK_FILE"
-          wget -q ${BASE_URL}/${SDK_FILE}
-          echo "${SDK_HASH}  ${SDK_FILE}" | sha256sum -c -
-          tar -I zstd -xf ${SDK_FILE}
-          SDK_DIR=$(tar -tf ${SDK_FILE} | awk -F/ 'NR==1 {print $1; exit}')
-          mv "$SDK_DIR" openwrt-sdk
-
-      - name: 🔗 Link package into SDK
-        run: |
-          mkdir -p openwrt-sdk/package/custom/${PKG_NAME}
-          rsync -a ./ openwrt-sdk/package/custom/${PKG_NAME}/ \
-            --exclude 'openwrt-sdk' \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude 'LICENSE' \
-            --exclude 'README.md' \
-            --exclude 'SECURITY.md'
-
-      - name: 🔍 Download and Calculate Hash manually
-        id: calc
-        run: |
-          cd openwrt-sdk
-          make defconfig
-          rm -f dl/${PKG_NAME}-*.tar.*
-          rm -rf build_dir/*/${PKG_NAME}*
-
-          echo "⬇️ Downloading source (Ignoring existing hash)..."
-          make package/custom/${PKG_NAME}/download PKG_MIRROR_HASH=skip V=s
-          
-          DOWNLOADED_FILE=$(find dl -type f -name "${PKG_NAME}*" | head -n 1)
-          if [ -z "$DOWNLOADED_FILE" ]; then
-            echo "❌ Error: No file found in openwrt-sdk/dl/"
-            echo "Listing dl directory:"
-            ls -R dl/
-            exit 1
-          fi
-          echo "📦 Found file: $DOWNLOADED_FILE"
-          NEW_HASH=$(sha256sum "$DOWNLOADED_FILE" | awk '{print $1}')
-          echo "🧮 Calculated Hash: $NEW_HASH"
-          echo "NEW_HASH=$NEW_HASH" >> $GITHUB_OUTPUT
-
-      - name: 📝 Update PKG_MIRROR_HASH if needed
-        run: |
-          NEW_HASH="${{ steps.calc.outputs.NEW_HASH }}"
-          OLD_HASH=$(grep '^PKG_MIRROR_HASH' Makefile | awk -F= '{print $2}' | tr -d '[:space:]')
-          
-          echo "Old Hash: $OLD_HASH"
-          echo "New Hash: $NEW_HASH"
-          
-          if [ -z "$NEW_HASH" ]; then
-            echo "❌ Failed to calculate new hash."
-            exit 1
-          fi
-          
-          if [ "$NEW_HASH" = "$OLD_HASH" ]; then
-            echo "ℹ️ Hash unchanged, no commit needed."
-            exit 0
-          fi
-          
-          sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$NEW_HASH|" Makefile
-          
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Makefile
-          git commit -m "Update-PKG_MIRROR_HASH to $NEW_HASH"
-          git push
+      - uses: Jackie264/actions-repo/package-mirror-hash-calculator@latest
+        env:
+          COMMIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAKEFILE: Makefile
+          TARGET_VERSION: ${{ inputs.target_version }}
