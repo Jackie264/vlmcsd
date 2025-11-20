@@ -80,7 +80,7 @@ jobs:
         env:
           commit_token: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
           MAKEFILE: Makefile
-          TARGET_VERSION: ${{ github.event.inputs.target_version != '' && github.event.inputs.target_version || '24.10.4' }}
+          TARGET_VERSION: '24.10.4'
 
       - name: Show calculated values
         if: steps.check.outputs.updated == 'true'
