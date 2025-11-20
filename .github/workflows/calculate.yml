@@ -2,18 +2,17 @@ name: Calculate PKG_MIRROR_HASH
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Check Upstream Update"]
-    types:
-      - completed
+  push:
+    branches:
+      - "main"
+    paths:
+      - "Makefile"
       
 jobs:
   calculate:
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      (github.event.workflow_run.conclusion == 'success' && 
-       contains(github.event.workflow_run.head_commit.message, 'Auto-update-vlmcsd'))
+      (github.event_name == 'push' && contains(github.event.head_commit.message, 'Auto-update-vlmcsd'))
        
     runs-on: ubuntu-latest
     permissions:
