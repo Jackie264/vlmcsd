@@ -87,4 +87,5 @@ jobs:
         run: |
           echo "new_ver = ${{ steps.check.outputs.new_ver }}"
           echo "NEW_HASH = ${{ steps.calc.outputs.NEW_HASH }}"
+          git add Makefile
           git commit -m "Update-PKG_MIRROR_HASH to ${{ steps.calc.outputs.NEW_HASH }}" || echo "No commit needed"
