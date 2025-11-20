@@ -81,11 +81,10 @@ jobs:
           commit_token: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
           MAKEFILE: Makefile
           TARGET_VERSION: '24.10.4'
-
+          COMMIT_MESSAGE: "Update-PKG_VERSION to ${{ steps.check.outputs.new_ver }}"
+          
       - name: Show calculated values
         if: steps.check.outputs.updated == 'true'
         run: |
           echo "new_ver = ${{ steps.check.outputs.new_ver }}"
           echo "NEW_HASH = ${{ steps.calc.outputs.NEW_HASH }}"
-          git add Makefile
-          git commit -m "Update-PKG_VERSION to ${{ steps.check.outputs.new_ver }}" || echo "No commit needed"
