@@ -73,26 +73,16 @@ jobs:
           echo "updated=true" >> $GITHUB_OUTPUT
           echo "new_ver=$REMOTE_VER" >> $GITHUB_OUTPUT
 
-      - name: Calculate PKG_MIRROR_HASH (replicated old method)
-        id: calc
+      - name: Prepare fetch sha256sums and sdk info
+        id: sdk-info
         if: steps.check.outputs.updated == 'true'
         shell: bash
         env:
           TARGET_VERSION: '24.10.4'
-          MAKEFILE: Makefile
         run: |
           set -euo pipefail
-
           BASE_URL="https://downloads.openwrt.org/releases/${TARGET_VERSION}/targets/x86/64"
           echo "BASE_URL=${BASE_URL}" >> $GITHUB_ENV
-
-          PKG_NAME=$(grep -E '^PKG_NAME[:?]?=' "${MAKEFILE}" | head -n1 | sed -E 's/PKG_NAME[:?]?= *//' || true)
-          if [ -z "$PKG_NAME" ]; then
-            echo "PKG_NAME not found in ${MAKEFILE}" >&2
-            exit 1
-          fi
-          echo "PKG_NAME=${PKG_NAME}"
-
           wget -q "${BASE_URL}/sha256sums" -O sha256sums
           SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}' | sed 's/^\*//')
           SDK_HASH=$(grep "openwrt-sdk" sha256sums | awk '{print $1}')
@@ -101,25 +91,67 @@ jobs:
             cat sha256sums
             exit 1
           fi
-          echo "SDK_FILE=${SDK_FILE}"
-          echo "SDK_HASH=${SDK_HASH}"
+          echo "SDK_FILE=${SDK_FILE}" >> $GITHUB_ENV
+          echo "SDK_HASH=${SDK_HASH}" >> $GITHUB_ENV
+          # expose for later cache key
+          echo "hash=${SDK_HASH}" >> $GITHUB_OUTPUT
+
+      - name: ♻️ Cache OpenWrt SDK
+        id: sdk-cache
+        if: steps.check.outputs.updated == 'true'
+        uses: actions/cache@v4
+        with:
+          path: openwrt-sdk
+          key: sdk-${{ runner.os }}-${{ steps.sdk-hash.outputs.hash }}-${{ hashFiles('Makefile') }}
+          restore-keys: sdk-${{ runner.os }}-${{ steps.sdk-hash.outputs.hash }}-
+
+      - name: Download & Extract OpenWrt SDK if cache miss
+        if: steps.check.outputs.updated == 'true'
+        shell: bash
+        run: |
+          if [ -d "openwrt-sdk" ]; then
+            echo "♻️ SDK restored from partial cache (restore-keys). Skipping download."
+            exit 0
+          fi
+          set -euo pipefail
+          BASE_URL="${BASE_URL:-https://downloads.openwrt.org/releases/24.10.4/targets/x86/64}"
+          SDK_FILE="${SDK_FILE:-}"
+          SDK_HASH="${SDK_HASH:-}"
+          if [ -z "$SDK_FILE" ]; then
+            echo "SDK_FILE not set" >&2
+            exit 1
+          fi
+          wget -q "${BASE_URL}/${SDK_FILE}" -O "${SDK_FILE}"
+          echo "${SDK_HASH}  ${SDK_FILE}" | sha256sum -c - || { echo "sdk sha256 mismatch"; exit 1; }
+          if echo "${SDK_FILE}" | grep -qE '\.tar\.zst$'; then
+            tar -I zstd -xf "${SDK_FILE}"
+          else
+            tar -xf "${SDK_FILE}"
+          fi
+          SDK_EXTRACT_DIR=$(tar -tf "${SDK_FILE}" | awk -F/ 'NR==1 {print $1; exit}')
+          mv "${SDK_EXTRACT_DIR}" openwrt-sdk
+          rm -f "${SDK_FILE}"
+
+      - name: Calculate PKG_MIRROR_HASH
+        id: calc
+        if: steps.check.outputs.updated == 'true'
+        shell: bash
+        env:
+          MAKEFILE: Makefile
+        run: |
+          set -euo pipefail
+
+          PKG_NAME=$(grep -E '^PKG_NAME[:?]?=' "${MAKEFILE}" | head -n1 | sed -E 's/PKG_NAME[:?]?= *//' || true)
+          [ -n "$PKG_NAME" ] || { echo "PKG_NAME not found in ${MAKEFILE}"; exit 1; }
+          echo "PKG_NAME=${PKG_NAME}"
 
           SDK_DIR="openwrt-sdk"
-          if [ -d "$SDK_DIR" ]; then
-            echo "Using existing $SDK_DIR directory"
-          else
-            wget -q "${BASE_URL}/${SDK_FILE}" -O "${SDK_FILE}"
-            echo "${SDK_HASH}  ${SDK_FILE}" | sha256sum -c - || { echo "sdk sha256 mismatch"; exit 1; }
-            if echo "${SDK_FILE}" | grep -qE '\.tar\.zst$'; then
-              tar -I zstd -xf "${SDK_FILE}"
-            else
-              tar -xf "${SDK_FILE}"
-            fi
-            SDK_EXTRACT_DIR=$(tar -tf "${SDK_FILE}" | awk -F/ 'NR==1 {print $1; exit}')
-            mv "${SDK_EXTRACT_DIR}" "${SDK_DIR}"
-            rm -f "${SDK_FILE}"
+          if [ ! -d "${SDK_DIR}" ]; then
+            echo "Error: SDK not present in ${SDK_DIR} (cache miss and download failed?)" >&2
+            exit 1
           fi
 
+          # ensure fresh state for this package
           rm -rf "${SDK_DIR}/package/custom/${PKG_NAME}"
           mkdir -p "${SDK_DIR}/package/custom/${PKG_NAME}"
           rsync -a . "${SDK_DIR}/package/custom/${PKG_NAME}/" \
@@ -136,8 +168,7 @@ jobs:
 
           DOWNLOADED_FILE=$(find dl -type f -name "${PKG_NAME}*" | head -n 1 || true)
           if [ -z "$DOWNLOADED_FILE" ]; then
-            echo "❌ Error: No file found in ${SDK_DIR}/dl/ after download"
-            echo "Listing dl/"
+            echo "❌ Error: No file found in ${SDK_DIR}/dl/ after download" >&2
             ls -la dl || true
             popd
             exit 1
@@ -145,24 +176,21 @@ jobs:
           echo "Found downloaded file: $DOWNLOADED_FILE"
 
           NEW_HASH=$(sha256sum "$DOWNLOADED_FILE" | awk '{print $1}')
-          echo "Calculated NEW_HASH=${NEW_HASH}"
           echo "NEW_HASH=${NEW_HASH}" >> $GITHUB_OUTPUT
-
           popd
-          sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=${NEW_HASH}|" "${MAKEFILE}" || true
 
+          # update Makefile in repo root
+          sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=${NEW_HASH}|" "${MAKEFILE}" || true
           echo "PKG_MIRROR_HASH=${NEW_HASH}" >> $GITHUB_ENV
 
-      - name: Commit Makefile locally (no push)
+      - name: Commit Makefile locally
         if: steps.calc.outputs.NEW_HASH != ''
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "onenas-bot"
           git config user.email "onenas-bot@example.com"
-
           git add -f Makefile
-
           if git diff --staged --quiet; then
             echo "No staged changes to commit for Makefile."
           else
