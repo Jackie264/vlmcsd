@@ -1,0 +1,158 @@
+name: Check And Calculate PKG_MIRROR_HASH
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: 'Target OpenWrt version. if empty the simple mode will be used.'
+        required: false
+        type: string
+  push:
+    branches:
+      - "main"
+    paths:
+      - "Makefile"
+
+permissions:
+  contents: write
+
+jobs:
+  check_and_calc:
+    name: Check upstream and calculate PKG_MIRROR_HASH
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.check.outputs.updated }}
+      new_ver: ${{ steps.check.outputs.new_ver }}
+      new_hash: ${{ steps.calc.outputs.NEW_HASH }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Check for updates
+        id: check
+        run: |
+          set -euo pipefail
+
+          UPSTREAM_URL="https://github.com/tfslabs/vlmcsd.git"
+          API_URL="https://api.github.com/repos/tfslabs/vlmcsd/commits"
+
+          CURRENT_VER=$(grep '^PKG_SOURCE_VERSION:=' Makefile | awk -F= '{print $2}' | tr -d '[:space:]')
+
+          REMOTE_VER=$(git ls-remote $UPSTREAM_URL HEAD | awk '{print $1}')
+
+          echo "Current: $CURRENT_VER"
+          echo "Remote:  $REMOTE_VER"
+
+          if [ -z "$REMOTE_VER" ]; then
+            echo "❌ Failed to get remote version."
+            exit 1
+          fi
+
+          if [ "$CURRENT_VER" = "$REMOTE_VER" ]; then
+            echo "✅ Already up to date."
+            echo "updated=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "🚀 New version found! Updating..."
+
+          COMMIT_JSON=$(curl -s "${API_URL}/${REMOTE_VER}")
+          NEW_DATE=$(echo "$COMMIT_JSON" | jq -r '.commit.committer.date' | cut -d'T' -f1)
+
+          if [ -z "$NEW_DATE" ] || [ "$NEW_DATE" = "null" ]; then
+             NEW_DATE=$(date +%Y-%m-%d)
+          fi
+
+          sed -i "s|^PKG_SOURCE_VERSION:=.*|PKG_SOURCE_VERSION:=$REMOTE_VER|" Makefile
+          sed -i "s|^PKG_SOURCE_DATE:=.*|PKG_SOURCE_DATE:=$NEW_DATE|" Makefile
+
+          echo "updated=true" >> $GITHUB_OUTPUT
+          echo "new_ver=$REMOTE_VER" >> $GITHUB_OUTPUT
+
+      - name: Calculate PKG_MIRROR_HASH
+        id: calc
+        if: steps.check.outputs.updated == 'true'
+        uses: Jackie264/actions-repo/package-mirror-hash-calculator@latest
+        with:
+          target_version: ${{ github.event.inputs.target_version || '' }}
+        env:
+          COMMIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAKEFILE: Makefile
+
+      - name: Show calculated values
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          echo "new_ver = ${{ steps.check.outputs.new_ver }}"
+          echo "NEW_HASH = ${{ steps.calc.outputs.NEW_HASH }}"
+
+  commit_update_hash:
+    name: Commit and push PKG_MIRROR_HASH if changed
+    needs: check_and_calc
+    runs-on: ubuntu-latest
+    if: needs.check_and_calc.outputs.updated == 'true' && needs.check_and_calc.outputs.new_hash != ''
+    steps:
+      - name: Checkout (no token persisted)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify and update Makefile PKG_MIRROR_HASH
+        id: update_hash
+        run: |
+          set -euo pipefail
+
+          NEW_HASH="${{ needs.check_and_calc.outputs.new_hash }}"
+          # read old hash (allow both := and =)
+          OLD_HASH=$(grep -E '^PKG_MIRROR_HASH' Makefile | awk -F'[:=]+' '{print $2}' | tr -d '[:space:]' || true)
+          echo "Old Hash: ${OLD_HASH}"
+          echo "New Hash: ${NEW_HASH}"
+
+          if [ -z "$NEW_HASH" ]; then
+            echo "No NEW_HASH; exiting."
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$NEW_HASH" = "$OLD_HASH" ]; then
+            echo "Hash unchanged; nothing to commit."
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Replace or append PKG_MIRROR_HASH
+          if grep -q '^PKG_MIRROR_HASH' Makefile; then
+            sed -i "s|^PKG_MIRROR_HASH.*|PKG_MIRROR_HASH:=$NEW_HASH|" Makefile
+          else
+            echo "PKG_MIRROR_HASH:=$NEW_HASH" >> Makefile
+          fi
+
+          git add Makefile
+          git diff --staged --name-only || true
+          echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push with PAT
+        if: steps.update_hash.outputs.changed == 'true'
+        env:
+          PAT: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "onenas-bot"
+          git config user.email "onenas-bot@example.com"
+
+          # commit (in case previous step didn't commit)
+          git add Makefile
+          git commit -m "Update-PKG_MIRROR_HASH to ${{ needs.check_and_calc.outputs.new_hash }}" || echo "No commit needed"
+
+          # use PAT so GitHub will generate real push events (not suppressed)
+          git remote set-url origin https://x-access-token:${PAT}@github.com/${{ github.repository }}.git
+
+          # push explicitly to main
+          git push origin HEAD:main
+
+      - name: Completed
+        run: echo "If hash changed, pushed Update-PKG_MIRROR_HASH and will trigger downstream build-release."
