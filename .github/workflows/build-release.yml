@@ -144,12 +144,30 @@ jobs:
           echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
           echo "full_version=$COMBINED_VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: 🛑 Check if release already exists
+        id: check_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="v${{ steps.version.outputs.full_version }}"
+          echo "Checking for existing release tag: $TAG_NAME"
+          
+          if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            echo "✅ Release $TAG_NAME already exists."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "🚀 Release $TAG_NAME does not exist. Proceeding with release."
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: ⬇️ Download all build artifacts
+        if: steps.check_release.outputs.exists == 'false'
         uses: actions/download-artifact@v6
         with:
           path: ./release-assets
 
       - name: 🗃️ Create GitHub Release
+        if: steps.check_release.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.full_version }}
@@ -163,6 +181,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout custom-packages repo
+        if: steps.check_release.outputs.exists == 'false'
         uses: actions/checkout@v5
         with:
           repository: OneNAS-space/custom-packages
@@ -170,6 +189,7 @@ jobs:
           path: custom-packages
 
       - name: 📂 Copy artifacts into repo
+        if: steps.check_release.outputs.exists == 'false'
         run: |
           find ./release-assets -type f -name "vlmcsd*.ipk" | while read -r f; do
             base=$(basename "$f")
@@ -184,6 +204,7 @@ jobs:
           ls -laR custom-packages
 
       - name: Update pkg artifacts
+        if: steps.check_release.outputs.exists == 'false'
         run: |
           cd custom-packages
           git config user.name "github-actions[bot]"
