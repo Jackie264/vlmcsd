@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: 🧾 Checkout repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: 🔎 Decide whether build is needed (fingerprint compare)
         id: need
@@ -127,7 +127,7 @@ jobs:
 
     steps:
       - name: 🧾 Checkout repo
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: 🔍 Extract version and release from Makefile
         id: version
@@ -182,7 +182,7 @@ jobs:
 
       - name: Checkout custom-packages repo
         if: steps.check_release.outputs.exists == 'false'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: OneNAS-space/custom-packages
           token: ${{ secrets.CUSTOM_PACKAGES_TOKEN }}
